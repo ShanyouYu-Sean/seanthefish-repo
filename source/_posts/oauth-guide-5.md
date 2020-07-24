@@ -1,71 +1,127 @@
 ---
 layout: post
-title: OAuth教程--移动和原生应用
-date: 2018-07-06 15:00:00
+title: OAuth教程--单页应用
+date: 2018-07-13 5:00:00
 tags: 
 - OAuth
 categories:
 - OAuth
 ---
-**本文是oauth.com上的教程的翻译。（[原文地址](https://www.oauth.com/oauth2-servers/oauth2-clients/mobile-and-native-apps/)）**
+**本文是oauth.com上的教程的翻译。（[原文地址](https://www.oauth.com)）**
 
-与单页应用程序一样，移动应用程序也无法保持客户机密的机密性。因此，移动应用还必须使用不需要客户端密钥的OAuth流程。当前的最佳做法是使用授权流程以及启动外部浏览器，以确保本机应用程序无法修改浏览器窗口或检查内容。
+从网页加载Javascript和HTML源代码后，单页应用程序（或基于浏览器的应用程序）将会完全在浏览器中运行。由于浏览器可以使用所有源代码，因此无法保持客户端密钥的机密性，因此这些应用程序不会使用该密钥。该流程与授权代码流完全相同，但在最后一步，授权码在不使用客户端密钥的情况下交换访问令牌。
 
-许多网站都提供移动SDK，为您处理授权过程。对于这些网站，你最好直接使用他们的SDK，因为他们可能用非标准的方式添加增加了他们的API。Google提供了一个名为AppAuth的开源库，它可以处理下面描述的流程的实现细节。它旨在能够与任何实现规范的OAuth 2.0服务器一起使用。如果服务不提供自己的抽象，并且您必须直接使用其OAuth 2.0的endpoint，你就可以参照本节介绍来了解如何使用授权与API进行交互。
+下图是用户与浏览器进行交互的示例，该浏览器直接向服务发出API请求。在首次从客户端下载Javascript和HTML源代码之后，浏览器会直接向服务发出API请求。在这种情况下，应用程序的服务器永远不会向服务发出API请求，因为所有事情都是直接在浏览器中处理的。
+
+![用户的浏览器直接与API服务器通信](https://raw.githubusercontent.com/ShanyouYu-Sean/blog-images/master/oauth-guide/okta_oauth-diagrams.png)
 
 ### 授权
 
-创建一个“登录”按钮，该按钮将打开SFSafariViewController或启动本机浏览器。您将使用与服务器端应用程序中所述相同的授权请求参数。
+授权码是客户端交换访问令牌的临时代码。代码本身从授权服务器获得，用户可以查看客户端请求的信息，并批准或拒绝该请求。
 
-对于本机应用程序的重定向URL，在iOS上，应用程序可以注册像`org.example.app://`这样的自定义URL scheme，只要访问具有该scheme的URL，就会启动应用程序。在Android上，应用程序可以注册URL匹配模式，如果访问了与模式匹配的URL，则会启动本机应用程序。
-
-### 举个栗子🌰
-
-在这个例子中，我们将创建一个简单的iPhone应用程序，获取访问虚构API的授权。
-
-#### 应用程序启动授权请求
-
-要开始授权过程，应用程序应该有一个“登录”按钮。该链接应构建为服务授权endpoint的完整URL。
+Web流程的第一步是请求用户授权。这是通过为用户创建单击的授权请求链接来完成的。
 
 授权URL通常采用以下格式：
 
-```http
-https://authorization-server.com/authorize
-?client_id=eKNjzFFjH9A1ysYd
-&response_type=code
-&redirect_uri=exampleapp://auth
-&state=1234zyx
+```html
+https://authorization-server.com/oauth/authorize
+  ?client_id=a17c21ed
+  &response_type=code
+  &state=5ca75bd30
+  &redirect_uri=https%3A%2F%2Fexample-app.com%2Fauth
 ```
 
-在这种情况下请注意重定向URL的自定义方案。iOS提供了应用程序注册自定义URL方案的功能。在Android上，应用可以改为匹配特定的网址模式，以便应用在访问特定网址时在应用列表中显示并进行处理。在iOS上，您应该在应用程序的.plist文件中注册您将使用的自定义方案。这将导致设备在访问以您的自定义方案开头的URL时启动您的应用，包括移动版Safari或其他iOS应用。
+用户访问授权页面后，服务会向用户显示请求的解释，包括应用程序名称，范围等。如果用户单击“批准”，服务器将重定向回网站，并附带授权码和URL查询字符串中的state值。
 
-当用户点击“登录”按钮时，应用程序应用SFSafariViewController打开共享系统cookie的嵌入式浏览器来打开登录URL。WebView在应用程序中使用嵌入式窗口被认为是非常危险的，因为这使用户无法保证他们正在查看服务自己的网站，并且是网络钓鱼攻击的简单来源。通过使用SFSafariViewController共享Safari cookie的API，您可以知道用户是否已经登录该服务。
+### 授权请求参数
 
-#### 用户批准该请求
+以下参数用于发出授权请求。
 
-在被定向到auth服务器时，用户看到如下所示的授权请求。
+>**client_id**
+>这client_id是您的应用的标识符。首次向服务注册您的应用程序时，您将收到一个client_id。
 
-![内置浏览器](https://raw.githubusercontent.com/ShanyouYu-Sean/blog-images/master/oauth-guide/sfsafariviewcontroller-example.png)
+>**response_type**
+>response_type设置为code表示您希望以授权码作为响应。
 
-嵌入式SFSafariViewController。右上角的“完成”按钮折叠视图并将用户返回到应用程序。
+>**redirect_uri （可选的）**
+>该redirect_uri是在规范中可选的，但是有些服务需要它。这是您希望在授权完成后将用户重定向到的URL。这必须与您先前在服务中注册的重定向URL相匹配。
 
-#### 该服务将用户重定向回应用程序
+>**scope （可选的）**
+>包括一个或多个范围值以请求其他访问级别。这些值将取决于特定的服务。
 
-当用户完成登录后，该服务将重定向回您的应用程序的重定向URL，在这种情况下，该URL具有一个自定义方案，该方案将触发您的应用程序委托的application:openURL:options:方法。Location重定向的标题将类似于以下内容，它将作为url参数传递给您的方法。
+>**state （推荐的）**
+>该state参数有两个功能。当用户被重定向回您的应用程序时，您在状态中包含的任何值都将包含在重定向中。这使您的应用程序有机会在被定向到授权服务器的用户和再次返回之间保留数据，例如使用state参数作为会话密钥。这可用于指示在授权完成后应用中要执行的操作，例如，指示在授权后要重定向到应用的哪个页面。这也可以作为CSRF保护机制。当用户重定向回您的应用程序时，请仔细检查状态值是否与您最初设置的值相匹配。这将确保攻击者无法拦截授权流程。
+
+>请注意，缺少使用客户端密钥意味着使用state参数对单页应用程序更为重要。
+
+### 举个栗子🌰
+
+以下分步示例说明了对单页应用程序使用授权授予类型。
+
+#### 步骤
+
+##### 应用程序启动授权请求
+
+应用程序通过制作包含ID的URL以及可选的scope和state来启动流程。该应用程序可以将其放入`<a href="">`标签中。
 
 ```html
-org.example.app://auth?state=1234zyx
-&code=lS0KgilpRsT07qT_iMOg9bBSaWqODC1g061nSLsa8gV2GYtyynB6A
+<a href="https://authorization-server.com/authorize?response_type=code
+     &client_id=mRkZGFjM&state=TY2OTZhZGFk">Connect Your Account</a>
 ```
 
-然后，您的应用应该从URL解析授权码，交换代码以获取访问令牌，并关闭SFSafariViewController。除了不使用客户端密钥之外，交换访问令牌的代码与授权代码流中的代码相同。
+##### 用户批准该请求
 
-### 安全考虑因素
+在被定向到auth服务器时，用户看到授权请求。
 
-#### 始终打开本机浏览器或使用 SFSafariViewController
+![示例授权请求](https://raw.githubusercontent.com/ShanyouYu-Sean/blog-images/master/oauth-guide/okta_oauth-diagrams-approve.png)
 
-您永远不应该使用OAuth提示打开嵌入式Web视图，因为它无法让用户验证他们正在查看的网页的来源。攻击者会创建一个看起来就像授权网页并将其嵌入到自己的恶意应用程序中的网页，让他们能够窃取用户名和密码。
+用户被带到服务并看到请求后，他们将允许或拒绝该请求。如果他们允许请求，他们将被重定向回重定向URL以及查询字符串中的授权码。然后，该应用程序需要交换授权码以获得访问令牌。
 
-#### PKCE
+```http
+https://example-app.com/cb?code=Yzk5ZDczMzRlNDEwY&state=TY2OTZhZGFk
+```
 
-如果您使用的服务支持PKCE扩展（[RFC 7636](https://tools.ietf.org/html/rfc7636)），那么您应该利用它提供的额外安全性。通常，例如在使用Google OAuth API的情况下，服务提供的本机SDK将透明地处理此问题，因此您无需担心详细信息，并且无需任何额外工作即可从额外的安全性中受益。
+如果您在初始授权网址中包含“state”参数，则该服务会在用户授权您的应用后将其返回给您。你的应用程序应该将state参数与它在初始请求中创建的state餐素进行比较。这有助于确保您只交换您请求的授权码，防止攻击者使用任意或被盗的授权码重定向到您的回调URL。
+
+##### 交换访问令牌的授权码
+
+要交换访问令牌的授权码，应用程序会向服务的令牌endpoint发出POST请求。请求将具有以下参数。
+
+>**grant_type （需要）**
+>该grant_type参数必须设置为“authorization_code”。
+
+>**code （需要）**
+>此参数用于从授权服务器接收的授权代码，该授权代码将位于此请求中的查询字符串参数“code”中。
+
+>**redirect_uri （可能需要）**
+>如果重定向URL包含在初始授权请求中，则它也必须包含在令牌请求中，并且必须相同。某些服务支持注册多个重定向URL，有些服务需要在每个请求上指定重定向URL。请查看服务的文档以了解具体信息。
+
+>**客户端识别ID（必填）**
+>尽管客户端密钥未在此流程中使用，但该请求需要发送客户端ID以识别发出请求的应用程序。这意味着客户端必须将客户端ID包含为POST主体参数，而不是像包含客户端密钥时那样使用HTTP基本认证。
+
+```http
+POST /oauth/token HTTP/1.1
+  Host: authorization-endpoint.com
+  grant_type=code
+  &code=Yzk5ZDczMzRlNDEwY
+  &redirect_uri=https://example-app.com/cb
+  &client_id=mRkZGFjM
+```
+
+### 隐式流程
+
+有些服务使用隐式流程用于单页面应用程序，而不是允许应用程序毫无限制地使用授权码流程。
+
+隐式流程绕过代码交换步骤，而是将查询字符串片段中的访问令牌立即返回给客户端。
+
+在实践中，只有非常有限的情况需要这样做。几个主要的实现（Keycloak，Deutsche Telekom，Smart Health IT）选择完全避免隐式流程并使用授权码流程。
+
+为了使单页应用程序使用授权码流程，它必须能够向授权服务器发出POST请求。这意味着如果授权服务器位于不同的域上，则服务器将需要支持相应的CORS头。如果不支持CORS头，则服务可以使用隐式流程。
+
+在任何情况下，对于隐式流程以及授权码流程来说，都没有客户端秘钥，服务器必须要求注册重定向URL以保持流程的安全性。
+
+#### 安全考虑
+
+通过使用“state”参数并将重定向URL限制为可认证客户端，这是授权代码授予无客户端密钥的客户端的唯一安全方法。由于没有使用密钥，除了使用注册的重定向URL之外，没有办法验证客户的身份。这就是为什么您需要使用OAuth 2.0服务预先注册您的重定向网址。
+
+尽管OAuth 2.0规范并不特别要求重定向URL使用TLS加密，但强烈建议您使用它。不需要的唯一原因是因为部署SSL网站对许多开发人员来说仍然是一个障碍，这将阻碍规范的广泛采用。有些API确实需要https作为重定向端点，但许多API仍然没有。
