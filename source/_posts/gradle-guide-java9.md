@@ -4,12 +4,8 @@ title: 用gradle构建Java 9模块化系统快速指南
 date: 2018-04-11 16:28:00
 tags: 
 - Java 9
-- Java module
-- gradle
 categories:
 - Java 9
-- Java module
-- gradle
 ---
 
 **本文是gradle官方的构建Java 9模块化系统的入门指南的翻译。（[原文地址](https://guides.gradle.org/building-java-9-modules/?_ga=2.174270880.30455902.1522735364-1287880600.1513842256)）**

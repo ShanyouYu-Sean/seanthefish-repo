@@ -3,12 +3,8 @@ layout: post
 title: 使用oidc id token验证spring security resource server
 date: 2018-11-06 14:00:00
 tags: 
-- OAuth
-- OIDC
 - spring
 categories:
-- OAuth
-- OIDC
 - spring
 ---
 

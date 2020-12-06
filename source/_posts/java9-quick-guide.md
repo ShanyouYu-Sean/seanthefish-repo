@@ -4,10 +4,8 @@ title: Project Jigsaw:Java模块系统快速入门指南
 date: 2018-03-29 10:12:00
 tags: 
 - Java 9
-- Java module
 categories:
 - Java 9
-- Java module
 ---
 
 **本文为openjdk官方java模块入门指南的翻译。([原文地址](http://openjdk.java.net/projects/jigsaw/quick-start))**

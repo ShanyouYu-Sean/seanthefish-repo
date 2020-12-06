@@ -4,10 +4,8 @@ title: 什么是OAuth？
 date: 2018-06-19 14:00:00
 tags: 
 - OAuth
-- OIDC
 categories:
 - OAuth
-- OIDC
 ---
 **本文是Matt Raible的What the Heck is OAuth?的翻译。（[原文地址](https://developer.okta.com/blog/2017/06/21/what-the-heck-is-oauth)）**
 

@@ -8,4 +8,4 @@ categories:
 - OAuth
 ---
 
-翻译了oauth.com上的教程，地址：`http://seanthefish.com/oauth-guide/#/`
+翻译了oauth.com上的教程，地址：http://seanthefish.com/oauth-guide/#/

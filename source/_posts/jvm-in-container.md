@@ -1,0 +1,44 @@
+---
+layout: post
+title: k8s中的jvm
+date: 2020-11-11 10:00:00
+tags: 
+- jvm
+categories:
+- jvm
+---
+
+最近遇到了Java应用在k8s中频繁重启的问题，记录一下。
+
+起因是因为一个bug，使我们的一个请求会大量申请许多新空对象，但这些空对象并没有被即使的回收，直接导致了pod级别的oomkille，或者直接被驱逐，于是开始了调查。
+
+在Java 8u131和Java 9之前，JVM不能识别容器设置的内存或cpu限制。所以按照jvm的管理，最大堆的大小会设置为虚拟机内存的四分之一。我们当前node使用的虚拟机是64g的，因此xmx就被设置为了16g，但是我们并没有在pod中做memory limits的限制，当前node上又跑了许多其他的应用，这导致k8s无法给pod申请足够的内存，jvm的堆大小冲破了pod的实际可分配内存，直接被oomkilled并重启。被干掉的pod会留下一个Evicted状态的尸体，但这个pod尸体里没有events可以看，这增加了debug的难度。
+
+仅仅在pod层面增加memory limits并不能解决问题，我们的jvm无法感知到容器的内存变化，仍旧以虚拟机内存的四分之一来设置最大堆的大小。
+我们确实可以通过简单设置xmx和pod的resource limits来解决，但是并不优雅，应用资源与容器资源强耦合，忘改一处即可能带来灾难。因此我们来探索下有没有其他方式。
+
+Java 8u131首先实现了称为的实验功能UseCGroupMemoryLimitForHeap。这是第一次尝试，但存在缺陷，为应用添加UnlockExperimentalVMOptions和UseCGroupMemoryLimitForHeap参数后，jvm确实可以感知到容器内存，并控制应用的实际堆大小。但是这并没有充分利用我们为容器分配的内存，jvm提供-XX:MaxRAMFraction标志来帮助更好的计算堆大小。
+
+MaxRAMFraction默认值是4（即除以4），但不幸的是，它是一个分数，而不是一个百分比，因此很难设置一个能有效利用可用内存的值，但是为什么我们不设置MaxRAMFraction为1，使其使用100％的可用内存呢？因为容器中可能正在运行其他进程，或者一些通过shell链接到容器的工具。
+
+Java 10附带了对容器环境的更好支持。如果你在Linux容器中运行Java应用程序，JVM将使用该UseContainerSupport选项自动检测内存限制。然后，您可以控制以下选项，InitialRAMPercentage，MaxRAMPercentage和MinRAMPercentage。这时，我们使用的是百分比而不是分数，这将更加准确。而这几个参数已经向下移植到Java 8u191。
+
+UseContainerSupport默认情况下是激活的。MaxRAMPercentage是25%，MinRAMPercentage是50%。这里min竟然比max大，不知道为啥。
+我们可以设置-XX:MinRAMPercentage=50.0，-XX:MaxRAMPercentage=80.0来是我们的应用感知，并充分利用pod的resource limits。
+需要注意的是，UseCGroupMemoryLimitForHeap虽然仍可以在最新版本的Java8中使用，但是已经被视为弃用的参数了。
+
+此外，在docker容器中运行JVM时，使用HeapDumpOnOutOfMemoryError参数可能是一个更明智的选择，因为，如果内存不足，jvm会将堆内存转储写入磁盘。默认情况下，堆内存会转储到VM的工作目录中的一个名为java_pid.hprof的文件中。您可以使用-XX:HeapDumpPath=来指定备用文件名或目录。例如，-XX:HeapDumpPath=/disk2/dumps将在/disk2/dumps目录中生成堆转储文件。请确保Java进程对堆转储的目录具有写入的访问权限。
+接着在说一下cpu，pod可以给cpu的limits的限制，来确保pod可以调度到几个cpu核心，而jvm会根据cpu的核心数来设置是否使用ParallelGC，以及几个ParallelGCThreads。
+
+但是如果我们不为pod设置cpu限制的话，jvm也并不能感知到虚拟机所有的可用cpu，而是认为只有一核，并关闭ParallelGC功能。因此在我们需要ParallelGC功能时，我们最好还设置cpu的限制。
+
+而且通过查阅一些资料，发现cpu核数对jvm的工作线程也有着影响。`Runtime.getRuntime().availableProcessors()`，这段的代码常用于Java库，它会根据CPU的个数产生工作线程。如果没有正确设置docker中的参数，对实际的程序性能会产生很大的影响。availableProcessors就是根据核数而定的。
+
+题外话：
+一个完整的jdk对gc和jvm问题的排查十分重要。jinfo，jstat都是十分有用的工具，并且学会看gclog也十分重要。
+
+一个小细节，我一直认为java -XX:+PrintFlagsFinal打印出的内容就是实际应用所在jvm进程的环境变量，但事实上，java -XX:+PrintFlagsFinal会单独建立一个进程，你打印出的东西都是这个命令所在进程的变量，而不是应用所在进程的变量。正确排查应用所在的jvm的进程的jvm变量还得用jinfo。
+
+此外，我们安装了阿里的Arthas来进行jvm故障的排查，很有用。但考虑到有的时候我们也想在生产环境安装Arthas，但是不希望为生产环境的应用安装完整的jdk，怎么办？可以使用sidecar的方式来安装Arthas，然后通过shareProcessNamespace: true参数来在pod中share不同容器里的进程，这样sidecar里的Arthas就可以attach到你应用的pid了。详见：https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/。
+
+先说到这，下回总结下gc的问题。
