@@ -11,6 +11,7 @@ categories:
 直接看 https://segmentfault.com/a/1190000022726755
 
 ## 总结
+
 Spring如何实现AOP？
 
 - AnnotationAwareAspectJAutoProxyCreator是AOP核心处理类
@@ -30,3 +31,4 @@ Spring如何实现AOP？
     - 对JDK Proxy来讲，关键在于定义InvocationHandler，逻辑可以参考JdkDynamicAopProxy#invoke
     - 在匹配的Advisor中找到当前方法匹配到Advices，将以上Advices封装为ReflectiveMethodInvocation，触发整条链
     - 如果一个Bean中的方法匹配上多个Advice，那多个Advice的invoke方法通过ReflectiveMethodInvocation进行链式调用
+

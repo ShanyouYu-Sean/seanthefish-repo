@@ -3,9 +3,9 @@ layout: post
 title: 微服务下的权限设计
 date: 2020-07-24 10:00:00
 tags: 
-- OAuth
+- 微服务
 categories:
-- OAuth
+- 微服务
 ---
 
 `本文优先发表于CIO Talk微信公众号（微信号: CIO_China_Lab）`

@@ -385,3 +385,50 @@ https://blog.csdn.net/qq_40955824/article/details/90035050
 - 弱引用(Weak references) —— 如果某个内存池的使用量增大, 造成了性能问题, 那么增加这个内存池的大小(可能也要增加堆内存的最大容量)。如, 增加堆内存的大小, 以及年轻代的大小, 可以减轻症状。
 - 虚引用(Phantom references) —— 请确保在程序中调用了虚引用的 clear 方法。编程中很容易忽略某些虚引用, 或者清理的速度跟不上生产的速度, 又或者清除引用队列的线程挂了, 就会对GC 造成很大压力, 最终可能引起 OutOfMemoryError。
 - 软引用(Soft references) —— 如果确定问题的根源是软引用, 唯一的解决办法是修改程序源码, 改变内部实现逻辑。
+
+---
+
+前一阵实战了一次gc 调优
+
+网上一个比较不错的推荐配置
+```
+-Xms5324m -Xmx5324m -Xss512k 
+-XX:PermSize=384m -XX:MaxPermSize=384m 
+-XX:MetaspaceSize=256m -XX:MaxMetaspaceSize=256m 
+-XX:NewSize=2048m -XX:MaxNewSize=2048m 
+-XX:SurvivorRatio=8 -XX:MaxTenuringThreshold=9 
+-XX:+UseConcMarkSweepGC -XX:+UseCMSInitiatingOccupancyOnly 
+-XX:+CMSScavengeBeforeRemark -XX:+ScavengeBeforeFullGC -XX:+UseCMSCompactAtFullCollection -XX:+CMSParallelRemarkEnabled 
+-XX:CMSFullGCsBeforeCompaction=9 -XX:CMSInitiatingOccupancyFraction=80 -XX:+CMSClassUnloadingEnabled -XX:SoftRefLRUPolicyMSPerMB=0 
+-XX:-ReduceInitialCardMarks -XX:+CMSPermGenSweepingEnabled -XX:CMSInitiatingPermOccupancyFraction=80 -XX:+ExplicitGCInvokesConcurrent 
+-XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCApplicationConcurrentTime -XX:+PrintGCApplicationStoppedTime -XX:+PrintHeapAtGC 
+-Xloggc:/data/applogs/heap_trace.txt -XX:-HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/applogs/HeapDumpOnOutOfMemoryError 
+-XX:+IgnoreUnrecognizedVMOptions 
+```
+
+我们在容器中的配置
+```
+-XX:MinRAMPercentage=80.0 -XX:MaxRAMPercentage=80.0 -Xmn1024M
+-XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintHeapAtGC 
+-XX:+UseConcMarkSweepGC 
+-XX:CMSInitiatingOccupancyFraction=80 -XX:+UseCMSInitiatingOccupancyOnly 
+-XX:+CMSScavengeBeforeRemark 
+-XX:MetaspaceSize=256m -XX:MaxMetaspaceSize=256m
+```
+
+4g内存，单机，压测，1k并发，多次，平均每1k并发也就几次ygc，偶尔一次cms gc，基本不会full gc。但压测下来，gc对性能的影响还是很小的，主要瓶颈还是数据库。
+
+一些需要注意的点
+
+-Xmn，-XX:NewSize/-XX:MaxNewSize，-XX:NewRatio 3组参数都可以影响年轻代的大小，混合使用的情况下，优先级是什么？
+如下：
+高优先级：-XX:NewSize/-XX:MaxNewSize 
+中优先级：-Xmn（默认等效 -Xmn=-XX:NewSize=-XX:MaxNewSize=?） 
+低优先级：-XX:NewRatio 
+推荐使用-Xmn参数，原因是这个参数简洁，相当于一次设定 NewSize/MaxNewSIze，而且两者相等，适用于生产环境。-Xmn 配合 -Xms/-Xmx，即可将堆内存布局完成。
+
+-XX:CMSFullGCsBeforeCompaction=0 和 -XX:+UseCMSCompactAtFullCollection 因为性能问题在最新的jdk8中已经不推荐设置。
+
+在不确定业务的对象到底会存活多久的时候，存活代数还是不设置了吧。
+
+参考：http://www.51gjie.com/java/551.html

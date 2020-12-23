@@ -86,3 +86,11 @@ raft是一个共识算法（consensus algorithm），所谓共识，就是多个
 
 而当网络分区修复时，为提交日志记录的节点在收到新的同步日志请求时，就会回滚之前的未提交记录，而去同步新主的日志，从而修复节点的不一致性。
 
+## 如何确定节点下线（redis的实现）
+
+follower在心跳超时后，不会立即晋升为candidate，只标记成leader主管下线，在等待超过半数的节点都认为leader主观下线后，才会确认客观下线，同时根据自己log和主节点的偏移量去sleep相应的时间后再晋升为candidate去发起投票。
+
+## raft 和 redis 的异同
+
+https://zhuanlan.zhihu.com/p/112651338
+
